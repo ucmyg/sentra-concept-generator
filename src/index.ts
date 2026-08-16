@@ -1,4 +1,7 @@
 export * from './canonical-json.ts';
+// Additive: the Concept Foundry is a sibling subsystem, namespaced so it can
+// never collide with or shadow anything on the evidence-gate path.
+export * as foundry from './foundry/index.ts';
 export * from './concept-pipeline.ts';
 export * from './falsifier-spec.ts';
 export * from './generator.ts';

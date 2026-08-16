@@ -9,3 +9,4 @@ coverage/
 *.bak
 .DS_Store
 Thumbs.db
+foundry-out/
