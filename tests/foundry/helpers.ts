@@ -105,6 +105,7 @@ export function minimalGenesisInput(
       : [{ found: false, proof: null, budget_spent: 1, bound: { maxDepth: 1, maxTerms: 1 } }],
     usefulness_tests: [],
     conventional_comparison: null,
+    confluence: null,
     confidence: 0.1,
   };
   return { ...base, ...overrides } as GenesisInput;

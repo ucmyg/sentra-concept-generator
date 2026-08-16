@@ -218,6 +218,8 @@ export interface GenesisRecord {
     contradiction_tests: ContradictionSearchResult[];
     usefulness_tests: UsefulnessTest[];
     conventional_comparison: EquivalenceVerdict | null;
+    /** Critical-pair analysis. A rule set that does not converge is a finding. */
+    confluence: ConfluenceReportLike | null;
   };
 
   status: {
@@ -255,5 +257,17 @@ export interface GenesisInput {
   contradiction_tests: ContradictionSearchResult[];
   usefulness_tests: UsefulnessTest[];
   conventional_comparison: EquivalenceVerdict | null;
+  confluence: ConfluenceReportLike | null;
   confidence: number;
+}
+
+/** Structural shape of a confluence report, declared here to avoid a cycle. */
+export interface ConfluenceReportLike {
+  foundation_id: string;
+  status: string;
+  pairs_examined: number;
+  unjoined: unknown[];
+  contradictions: unknown[];
+  budget_spent: number;
+  note: string;
 }

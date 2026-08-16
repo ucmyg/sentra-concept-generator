@@ -1,3 +1,4 @@
+import { criticalPairs } from './confluence.ts';
 import { findContradiction } from './contradiction.ts';
 import { isNontrivial } from './derived.ts';
 import { searchDerivation } from './derive-search.ts';
@@ -372,6 +373,7 @@ function genesisInputFor(
     contradiction_tests: [contradiction],
     usefulness_tests: [],
     conventional_comparison: null,
+    confluence: criticalPairs(f),
     confidence: 0.2,
   };
 }
@@ -380,6 +382,7 @@ function genesisInputFor(
 
 export interface FirstGenerationReport {
   seed: string;
+  confluence: ReturnType<typeof criticalPairs>[];
   foundations: Foundation[];
   difference: ReturnType<typeof assessDifference>;
   registry: ConceptRegistry;
@@ -402,6 +405,20 @@ export async function runFirstGeneration(
   const kills: FirstGenerationReport['kills'] = [];
   const rejected: FirstGenerationReport['rejected_proposals'] = [];
   const openDefects: string[] = [];
+
+  const confluenceReports = foundations.map((f) => criticalPairs(f));
+  for (const report of confluenceReports) {
+    if (report.status === 'NON_CONFLUENT') {
+      openDefects.push(
+        `NON-CONFLUENT: ${report.foundation_id} has ${report.unjoined.length} critical pair(s) ` +
+          'reaching different normal forms. The rule set does not decide what these terms ' +
+          'mean. Found by critical-pair analysis, not by inspection.',
+      );
+    }
+    if (report.status === 'UNKNOWN_BUDGET_EXCEEDED') {
+      openDefects.push(`CONFLUENCE UNKNOWN: ${report.foundation_id} — ${report.note}`);
+    }
+  }
 
   // Benchmarks are pre-registered BEFORE anything is measured.
   const benchmarks = [...BENCHMARK_SPECS, ...HELD_OUT_SPECS].map((spec) =>
@@ -533,6 +550,7 @@ export async function runFirstGeneration(
 
   return {
     seed,
+    confluence: confluenceReports,
     foundations,
     difference,
     registry,

@@ -49,6 +49,17 @@ for (const [id, rules] of Object.entries(report.difference.non_interdefinable_ru
 say(`verdict: ${report.difference.substantially_different ? 'substantially different' : 'NOT substantially different'}`);
 say();
 
+say('## Confluence (critical-pair analysis)');
+say();
+for (const r of report.confluence) {
+  say(`### ${r.foundation_id} — ${r.status}`);
+  say(`${r.pairs_examined} critical pair(s) examined, ${r.unjoined.length} unjoined. ${r.note}`);
+  for (const u of r.unjoined) {
+    say(`- ${u.left_rule} overlaps ${u.right_rule} at [${u.position.join('.') || 'root'}]: ${u.note}`);
+  }
+  say();
+}
+
 say('## Nontrivial consequences');
 say();
 for (const c of report.consequences) {

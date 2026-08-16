@@ -94,6 +94,14 @@ export function verifyLineage(
  * ------------------------------------------------------------------ */
 
 function deriveFormalStatus(input: GenesisInput): { status: FormalStatus; cause: string | null } {
+  if (input.confluence && input.confluence.status === 'CONTRADICTORY') {
+    return {
+      status: 'CONTRADICTORY',
+      cause:
+        'Critical-pair analysis found an overlap sending one term to two constants this ' +
+        `system declares distinct. ${input.confluence.note}`,
+    };
+  }
   const contradiction = input.contradiction_tests.find((t) => t.found);
   if (contradiction) {
     const pair = contradiction.proof?.distinct_pair;
@@ -163,6 +171,7 @@ export function buildGenesisRecord(input: GenesisInput): GenesisRecord {
       contradiction_tests: input.contradiction_tests,
       usefulness_tests: input.usefulness_tests,
       conventional_comparison: input.conventional_comparison,
+      confluence: input.confluence ?? null,
     },
     status: {
       formal: status,
