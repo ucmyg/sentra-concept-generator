@@ -59,6 +59,70 @@ export function substitute(t: Term, s: Record<string, Term>): Term {
   return { op: t.op, args: t.args.map((a) => substitute(a, s)) };
 }
 
+function occursIn(varName: string, t: Term): boolean {
+  if (isVar(t)) return t.v === varName;
+  if (isConst(t)) return false;
+  return t.args.some((a) => occursIn(varName, a));
+}
+
+/** Bind `varName` to `term` in `subst`, resolving the new binding through every
+ *  existing entry so the returned substitution stays fully self-resolved
+ *  (no key's value ever mentions another key). */
+function bind(
+  varName: string,
+  term: Term,
+  subst: Record<string, Term>,
+): Record<string, Term> {
+  const patch = { [varName]: term };
+  const updated: Record<string, Term> = {};
+  for (const [k, v] of Object.entries(subst)) updated[k] = substitute(v, patch);
+  updated[varName] = term;
+  return updated;
+}
+
+/**
+ * First-order syntactic unification (Robinson). Unlike `match`, both sides
+ * may contain variables that get bound — this is what finding a critical
+ * pair between two rule left-hand-sides needs, and `match` cannot do it
+ * (it only ever binds variables on the pattern side against a ground term).
+ *
+ * Occurs-checked, so `unify(v('x'), op('f', v('x')))` correctly fails rather
+ * than building an infinite term. Returns a substitution that is fully
+ * self-resolved: applying it once with `substitute` is enough, no chasing.
+ */
+export function unify(
+  a: Term,
+  b: Term,
+  subst: Record<string, Term> = {},
+): Record<string, Term> | null {
+  const ra = substitute(a, subst);
+  const rb = substitute(b, subst);
+
+  if (isVar(ra) && isVar(rb) && ra.v === rb.v) return subst;
+  if (isVar(ra)) return occursIn(ra.v, rb) ? null : bind(ra.v, rb, subst);
+  if (isVar(rb)) return occursIn(rb.v, ra) ? null : bind(rb.v, ra, subst);
+  if (isConst(ra) && isConst(rb)) return ra.c === rb.c ? subst : null;
+  if (isApp(ra) && isApp(rb)) {
+    if (ra.op !== rb.op || ra.args.length !== rb.args.length) return null;
+    let current: Record<string, Term> | null = subst;
+    for (let i = 0; i < ra.args.length; i += 1) {
+      current = unify(ra.args[i]!, rb.args[i]!, current!);
+      if (current === null) return null;
+    }
+    return current;
+  }
+  return null;
+}
+
+/** Rename every variable in `t` by appending `suffix`, so unifying two rules'
+ *  terms doesn't accidentally capture a variable they happen to share a name
+ *  with (e.g. both rules use `x`). */
+export function renameApart(t: Term, suffix: string): Term {
+  if (isVar(t)) return { v: `${t.v}${suffix}` };
+  if (isConst(t)) return t;
+  return { op: t.op, args: t.args.map((a) => renameApart(a, suffix)) };
+}
+
 export function subtermAt(t: Term, path: readonly number[]): Term | null {
   let current: Term = t;
   for (const index of path) {

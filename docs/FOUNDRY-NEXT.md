@@ -60,6 +60,17 @@ they are fixed. Nothing should be promoted past UNTESTED before they are.
    false confluence claims, either of which is worse than the gap being
    visibly open.
 
+   PREREQUISITE DONE: `unify` and `renameApart` are now in `kernel.ts`
+   (Robinson unification, occurs-checked, fully self-resolving substitution;
+   tests in `tests/foundry/unify.test.ts`, 5/5). What's still missing is the
+   critical-pair enumeration itself — for each pair of rules, rename apart,
+   unify a non-variable subterm of one LHS against the other LHS, and for
+   each unifier build the two divergent terms and check joinability. That
+   assembly step, and the `findConfluenceIssues`-style wrapper that reports
+   NON_CONFLUENT with a witness pair, is the next open item — not attempted
+   this pass so it gets its own focused review rather than riding in on the
+   unification commit.
+
 5. **Conditional and non-oriented axioms.** Rules are currently oriented rewrites
    only. Equational axioms that cannot be oriented (commutativity) are
    unrepresentable, which quietly restricts what can be invented. Add
