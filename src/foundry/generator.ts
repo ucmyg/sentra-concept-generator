@@ -41,8 +41,8 @@ const O = (n: string, ...args: Term[]): Term => ({ op: n, args });
 export const DISTINCTION_ALGEBRA: Foundation = {
   id: 'F1-distinction',
   name: 'Distinction algebra',
-  primitives: ['distinction', 'mark', 'void'],
-  constants: ['void'],
+  primitives: ['distinction', 'mark', 'void', 'unit'],
+  constants: ['void', 'unit'],
   operations: [
     { name: 'mark', arity: 1 },
     { name: 'join', arity: 2 },
@@ -52,18 +52,21 @@ export const DISTINCTION_ALGEBRA: Foundation = {
     { id: 'f1-void-left', lhs: O('join', C('void'), V('x')), rhs: V('x') },
     { id: 'f1-void-right', lhs: O('join', V('x'), C('void')), rhs: V('x') },
   ],
-  distinct: [],
+  // Without a distinctness assertion the contradiction search has nothing it
+  // can possibly report, and "no contradiction found" means nothing.
+  distinct: [['void', 'unit']],
   invariants: [
     'marking twice returns the original distinction',
     'void is inert under joining',
+    'void and unit are distinct: deriving one from the other is a contradiction',
   ],
 };
 
 export const CONSTRAINT_FLOW: Foundation = {
   id: 'F2-constraint',
   name: 'Constraint flow',
-  primitives: ['constraint', 'slack', 'tightening', 'meeting'],
-  constants: ['free'],
+  primitives: ['constraint', 'slack', 'tightening', 'meeting', 'blockage'],
+  constants: ['free', 'blocked'],
   operations: [
     { name: 'tighten', arity: 1 },
     { name: 'relax', arity: 1 },
@@ -78,18 +81,19 @@ export const CONSTRAINT_FLOW: Foundation = {
       rhs: O('meet', O('tighten', V('x')), O('tighten', V('y'))),
     },
   ],
-  distinct: [],
+  distinct: [['free', 'blocked']],
   invariants: [
     'relaxing a tightening is a no-op',
     'tightening distributes over meeting — no F1 or F3 rule interdefines this',
+    'free and blocked are distinct: deriving one from the other is a contradiction',
   ],
 };
 
 export const UNCERTAINTY_BOUNDARY: Foundation = {
   id: 'F3-uncertainty',
   name: 'Uncertainty boundary',
-  primitives: ['uncertainty', 'boundary', 'spreading', 'collapsing'],
-  constants: ['sharp'],
+  primitives: ['uncertainty', 'boundary', 'spreading', 'collapsing', 'diffusion'],
+  constants: ['sharp', 'diffuse'],
   operations: [
     { name: 'spread', arity: 1 },
     { name: 'collapse', arity: 1 },
@@ -108,11 +112,12 @@ export const UNCERTAINTY_BOUNDARY: Foundation = {
       rhs: O('collapse', V('x')),
     },
   ],
-  distinct: [],
+  distinct: [['sharp', 'diffuse']],
   invariants: [
     'collapsing a spread recovers the original',
     'collapse is idempotent — it is not an involution',
     'the sharp element is not an identity: overlaying it forces a collapse',
+    'sharp and diffuse are distinct: deriving one from the other is a contradiction',
   ],
 };
 
