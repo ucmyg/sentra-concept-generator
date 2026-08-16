@@ -1,12 +1,13 @@
 # Concept Foundry — next implementation and research plan
 
-> STATUS 2026-08-16: Priority 1 (items 1-3) and Priority 2 items 4 (termination
-> half only) and 6 are DONE and pushed. See commits 7ee60ae, bae3f7c, the
-> interpretation-witness commit, and `kernel.ts::terminationProbe`.
-> Confluence (the other half of item 4, critical-pair analysis) is
-> deliberately NOT attempted yet — it needs first-order unification, which
-> is a correctness-sensitive addition to a trusted-kernel file and should not
-> be rushed. Remaining open items: confluence probes, then item 5.
+> STATUS 2026-08-16 (updated): Priority 1 (items 1-3) and ALL of Priority 2
+> item 4 (termination + confluence via critical pairs) and item 6 are DONE
+> and pushed — commits 7ee60ae, bae3f7c, the interpretation-witness commit,
+> 8164713 (terminationProbe), 9e87c87 (unify/renameApart), and b083f8d
+> (critical-pair confluence, complete). criticalPairs found real
+> non-confluence in F2-constraint and F3-uncertainty — logged as open design
+> defects, not patched to force green. Remaining open items: item 5
+> (conditional/non-oriented axioms), then Priority 3 (corpus seam).
 
 Written after the first generation run. Ordered by what most threatens the
 honesty of the output, not by what is most fun to build.
