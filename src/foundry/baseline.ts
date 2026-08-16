@@ -1,4 +1,11 @@
-import { applyRuleAt, positions, termDepth, termEq, termKey } from './kernel.ts';
+import {
+  applyRuleAt,
+  commutativeOps,
+  positions,
+  termDepth,
+  termEqModulo,
+  termKey,
+} from './kernel.ts';
 import { enumerateGroundTerms } from './contradiction.ts';
 import type { Foundation, Rule, Term, Trace, TraceStep } from './types.ts';
 
@@ -23,13 +30,14 @@ export interface BaselineBound {
 
 /** Normal form under the declared rules, bounded by fuel. */
 export function normalForm(foundation: Foundation, term: Term, fuel = 80): Term {
+  const comm = commutativeOps(foundation);
   let current = term;
   for (let i = 0; i < fuel; i += 1) {
     let advanced = false;
     outer: for (const rule of foundation.rules) {
       for (const path of positions(current)) {
-        const produced = applyRuleAt(rule, current, path);
-        if (produced !== null && !termEq(produced, current)) {
+        const produced = applyRuleAt(rule, current, path, comm);
+        if (produced !== null && !termEqModulo(produced, current, comm)) {
           current = produced;
           advanced = true;
           break outer;
@@ -59,7 +67,7 @@ export function buildLookupBaseline(
   const seen = new Set<string>();
   terms.forEach((term, i) => {
     const nf = normalForm(foundation, term);
-    if (termEq(term, nf)) return; // nothing to look up
+    if (termEqModulo(term, nf, commutativeOps(foundation))) return; // nothing to look up
     const key = termKey(term);
     if (seen.has(key)) return;
     seen.add(key);
@@ -110,9 +118,10 @@ export function runTask(
   maxSteps = 8,
   maxNodes = 20_000,
 ): TaskRun {
+  const comm = commutativeOps(foundation);
   let attempts = 0;
   let peak = sizeOf(start);
-  if (termEq(start, target)) {
+  if (termEqModulo(start, target, comm)) {
     return { reached: true, steps: 0, trace: { start, steps: [] }, attempts, peak_term_size: peak };
   }
   const seen = new Set([termKey(start)]);
@@ -126,7 +135,7 @@ export function runTask(
     for (const rule of foundation.rules) {
       for (const path of positions(node.term)) {
         attempts += 1;
-        const produced = applyRuleAt(rule, node.term, path);
+        const produced = applyRuleAt(rule, node.term, path, comm);
         if (produced === null) continue;
         if (termDepth(produced) > 8) continue;
         const key = termKey(produced);
@@ -134,7 +143,7 @@ export function runTask(
         seen.add(key);
         peak = Math.max(peak, sizeOf(produced));
         const steps = [...node.steps, { rule: rule.id, path, result: produced }];
-        if (termEq(produced, target)) {
+        if (termEqModulo(produced, target, comm)) {
           return { reached: true, steps: steps.length, trace: { start, steps }, attempts, peak_term_size: peak };
         }
         queue.push({ term: produced, steps });

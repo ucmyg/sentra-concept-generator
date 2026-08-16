@@ -63,6 +63,15 @@ export interface Foundation {
   distinct: Array<[string, string]>;
   invariants: string[];
   parent_id?: string | null;
+  /**
+   * Declared equational theory. Rules are ORIENTED rewrites, which cannot
+   * express commutativity: x·y = y·x loops forever in either direction. An
+   * operation listed here is matched modulo that equation instead, so the
+   * axiom is carried by the matcher rather than by a rule that diverges.
+   */
+  theory?: {
+    commutative?: string[];
+  };
 }
 
 export interface TraceStep {

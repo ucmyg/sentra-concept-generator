@@ -151,15 +151,105 @@ export function replaceAt(
   return { op: t.op, args };
 }
 
-/** Apply one rule at one position. Returns null when the rule does not fire there. */
+/* ------------------------------------------------------------------ *
+ * Matching modulo a declared equational theory.                       *
+ *                                                                     *
+ * Oriented rewriting cannot express commutativity. Written left to    *
+ * right, x·y -> y·x rewrites forever; written the other way, the same.*
+ * So a commutative operation is not given a rule at all — it is       *
+ * declared in the theory, and the matcher tries the equivalent        *
+ * argument orders itself.                                             *
+ *                                                                     *
+ * With an empty theory every function below is exactly the oriented   *
+ * behavior it replaces. Nothing changes for a foundation that does    *
+ * not declare one.                                                    *
+ * ------------------------------------------------------------------ */
+
+export function commutativeOps(foundation: Foundation): ReadonlySet<string> {
+  return new Set(foundation.theory?.commutative ?? []);
+}
+
+const EMPTY_THEORY: ReadonlySet<string> = new Set<string>();
+
+/**
+ * Canonical form modulo commutativity: arguments of a commutative operation
+ * are sorted, so two terms equal under the theory serialize identically.
+ */
+export function canonicalModulo(t: Term, comm: ReadonlySet<string> = EMPTY_THEORY): Term {
+  if (!isApp(t)) return t;
+  const args = t.args.map((a) => canonicalModulo(a, comm));
+  if (comm.has(t.op) && args.length === 2) {
+    const [x, y] = args as [Term, Term];
+    return termKey(x) <= termKey(y) ? { op: t.op, args: [x, y] } : { op: t.op, args: [y, x] };
+  }
+  return { op: t.op, args };
+}
+
+/** Equality modulo the declared theory. */
+export function termEqModulo(
+  a: Term,
+  b: Term,
+  comm: ReadonlySet<string> = EMPTY_THEORY,
+): boolean {
+  if (comm.size === 0) return termEq(a, b);
+  return termKey(canonicalModulo(a, comm)) === termKey(canonicalModulo(b, comm));
+}
+
+/**
+ * Structural match modulo commutativity. For a declared-commutative binary
+ * operation both argument orders are attempted; the first consistent
+ * substitution wins.
+ */
+export function matchModulo(
+  pattern: Term,
+  term: Term,
+  comm: ReadonlySet<string> = EMPTY_THEORY,
+  acc: Record<string, Term> = {},
+): Record<string, Term> | null {
+  if (comm.size === 0) return match(pattern, term, acc);
+  if (isVar(pattern)) {
+    const bound = acc[pattern.v];
+    if (bound === undefined) return { ...acc, [pattern.v]: term };
+    return termEqModulo(bound, term, comm) ? acc : null;
+  }
+  if (isConst(pattern)) return isConst(term) && term.c === pattern.c ? acc : null;
+  if (!isApp(pattern) || !isApp(term)) return null;
+  if (term.op !== pattern.op) return null;
+  if (term.args.length !== pattern.args.length) return null;
+
+  const orders: number[][] =
+    comm.has(pattern.op) && pattern.args.length === 2 ? [[0, 1], [1, 0]] : [[0, 1, 2, 3, 4, 5, 6, 7]];
+
+  for (const order of orders) {
+    let current: Record<string, Term> | null = acc;
+    let ok = true;
+    for (let i = 0; i < pattern.args.length; i += 1) {
+      const j = order[i] ?? i;
+      current = matchModulo(pattern.args[i]!, term.args[j]!, comm, current!);
+      if (current === null) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok && current !== null) return current;
+  }
+  return null;
+}
+
+/**
+ * Apply one rule at one position. Returns null when the rule does not fire
+ * there. `comm` carries the declared commutative operations; omitted, this is
+ * exactly the oriented behavior.
+ */
 export function applyRuleAt(
   rule: Rule,
   term: Term,
   path: readonly number[],
+  comm: ReadonlySet<string> = EMPTY_THEORY,
 ): Term | null {
   const target = subtermAt(term, path);
   if (target === null) return null;
-  const s = match(rule.lhs, target);
+  const s = comm.size === 0 ? match(rule.lhs, target) : matchModulo(rule.lhs, target, comm);
   if (s === null) return null;
   return replaceAt(term, path, substitute(rule.rhs, s));
 }
@@ -190,6 +280,7 @@ export function replayTrace(foundation: Foundation, trace: Trace | null | undefi
     return { ok: false, final: null, reason: 'MALFORMED_TRACE', steps_replayed: 0, max_term_size: 0 };
   }
   const rules = rulesOf(foundation);
+  const comm = commutativeOps(foundation);
   let current: Term = trace.start;
   let maxSize = termSize(current);
   let replayed = 0;
@@ -204,7 +295,7 @@ export function replayTrace(foundation: Foundation, trace: Trace | null | undefi
         max_term_size: maxSize,
       };
     }
-    const produced = applyRuleAt(rule, current, step.path ?? []);
+    const produced = applyRuleAt(rule, current, step.path ?? [], comm);
     if (produced === null) {
       return {
         ok: false,
@@ -214,7 +305,7 @@ export function replayTrace(foundation: Foundation, trace: Trace | null | undefi
         max_term_size: maxSize,
       };
     }
-    if (!termEq(produced, step.result)) {
+    if (!termEqModulo(produced, step.result, comm)) {
       return {
         ok: false,
         final: null,
@@ -257,12 +348,15 @@ export interface TerminationProbeResult {
 function firstRedex(
   rules: Rule[],
   term: Term,
+  comm: ReadonlySet<string> = EMPTY_THEORY,
 ): { rule: Rule; path: number[] } | null {
   for (const path of positions(term)) {
     const target = subtermAt(term, path);
     if (target === null) continue;
     for (const rule of rules) {
-      if (match(rule.lhs, target) !== null) return { rule, path };
+      const fired =
+        comm.size === 0 ? match(rule.lhs, target) : matchModulo(rule.lhs, target, comm);
+      if (fired !== null) return { rule, path };
     }
   }
   return null;
@@ -287,7 +381,7 @@ export function terminationProbe(
   let current = start;
   let maxSizeSeen = termSize(current);
   for (let step = 0; step < maxSteps; step += 1) {
-    const redex = firstRedex(foundation.rules, current);
+    const redex = firstRedex(foundation.rules, current, commutativeOps(foundation));
     if (redex === null) {
       return {
         status: 'TERMINATED',
@@ -296,7 +390,7 @@ export function terminationProbe(
         max_term_size: maxSizeSeen,
       };
     }
-    const produced = applyRuleAt(redex.rule, current, redex.path);
+    const produced = applyRuleAt(redex.rule, current, redex.path, commutativeOps(foundation));
     if (produced === null) {
       // The reported redex must fire; a null here means firstRedex and
       // applyRuleAt disagree, which is a kernel bug, not a foundation defect.
@@ -334,7 +428,7 @@ export function derive(
   for (const step of plan) {
     const rule = rules.get(step.rule);
     if (!rule) return null;
-    const produced = applyRuleAt(rule, current, step.path);
+    const produced = applyRuleAt(rule, current, step.path, commutativeOps(foundation));
     if (produced === null) return null;
     steps.push({ rule: step.rule, path: step.path, result: produced });
     current = produced;

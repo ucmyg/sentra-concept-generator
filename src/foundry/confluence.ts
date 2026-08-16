@@ -6,7 +6,8 @@ import {
   replaceAt,
   substitute,
   subtermAt,
-  termEq,
+  commutativeOps,
+  termEqModulo,
   terminationProbe,
   unify,
 } from './kernel.ts';
@@ -152,12 +153,15 @@ export function criticalPairs(
         if (rebuilt === null) continue;
         const rightResult = substitute(rebuilt, sigma);
 
-        if (termEq(leftResult, rightResult)) continue; // trivially joined
+        const comm = commutativeOps(foundation);
+        if (termEqModulo(leftResult, rightResult, comm)) continue; // trivially joined
 
         const leftNf = normalizeBounded(foundation, leftResult, bound);
         const rightNf = normalizeBounded(foundation, rightResult, bound);
         const joinable =
-          leftNf.term !== null && rightNf.term !== null && termEq(leftNf.term, rightNf.term);
+          leftNf.term !== null &&
+          rightNf.term !== null &&
+          termEqModulo(leftNf.term, rightNf.term, comm);
         const contradictionPair = distinctPairOf(foundation, leftNf.term, rightNf.term);
 
         pairs.push({

@@ -1,5 +1,5 @@
 import { enumerateGroundTerms } from './contradiction.ts';
-import { applyRuleAt, positions, termDepth, termKey } from './kernel.ts';
+import { applyRuleAt, commutativeOps, positions, termDepth, termKey } from './kernel.ts';
 import type { Foundation, Term, Trace, TraceStep } from './types.ts';
 
 /* ------------------------------------------------------------------ *
@@ -29,6 +29,7 @@ export function searchDerivation(
   criteria: Partial<DerivationCriteria> = {},
 ): Trace | null {
   const c = { ...DEFAULTS, ...criteria };
+  const comm = commutativeOps(foundation);
   const starts = enumerateGroundTerms(foundation, { maxDepth: 4, maxTerms: c.maxStartTerms });
 
   for (const start of starts) {
@@ -45,7 +46,7 @@ export function searchDerivation(
       if (node.steps.length >= c.maxSearchDepth) continue;
       for (const rule of foundation.rules) {
         for (const path of positions(node.term)) {
-          const produced = applyRuleAt(rule, node.term, path);
+          const produced = applyRuleAt(rule, node.term, path, comm);
           if (produced === null) continue;
           if (termDepth(produced) > 7) continue;
           const key = termKey(produced) + `|${node.steps.length}`;
