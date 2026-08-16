@@ -159,7 +159,8 @@ export interface EquivalenceVerdict {
     | 'TEMPLATE_MISMATCH'
     | 'FINGERPRINT_MISMATCH'
     | 'NO_WITNESS_FOUND'
-    | 'WITNESS_VERIFIED';
+    | 'WITNESS_VERIFIED'
+    | 'INTERPRETATION_WITNESS_VERIFIED';
   templates: { a: string[]; b: string[] };
   fingerprints: { a: string; b: string };
   witness: TranslationWitness | null;

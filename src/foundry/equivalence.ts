@@ -1,3 +1,4 @@
+import { findInterpretationWitness, type InterpretationWitness } from './interpretation.ts';
 import { isApp, isConst, isVar } from './kernel.ts';
 import { modelFingerprint } from './models.ts';
 import type {
@@ -211,13 +212,24 @@ export function matchTemplates(f: Foundation): string[] {
 
 export interface EquivalenceOptions {
   maxModelSize?: number;
+  /**
+   * Search for an interpretation witness when no name bijection exists.
+   * Catches a concept that DEFINES a new operation out of existing ones —
+   * a new name with no new behavior, which a bijection search cannot see
+   * because the signatures no longer match.
+   */
+  interpretation?: boolean;
+}
+
+export interface StagedEquivalenceVerdict extends EquivalenceVerdict {
+  interpretation_witness: InterpretationWitness | null;
 }
 
 export function checkEquivalence(
   a: Foundation,
   b: Foundation,
   options: EquivalenceOptions = {},
-): EquivalenceVerdict {
+): StagedEquivalenceVerdict {
   const maxModelSize = options.maxModelSize ?? 3;
   const notes: string[] = [];
   const templates = { a: matchTemplates(a), b: matchTemplates(b) };
@@ -229,25 +241,47 @@ export function checkEquivalence(
       .map((o) => o.arity)
       .sort((x, y) => x - y)
       .join(',');
-  if (arities(a) !== arities(b) || a.constants.length !== b.constants.length) {
-    notes.push('Signatures differ in operation arities or constant count.');
+  const signatureMatches =
+    arities(a) === arities(b) &&
+    a.constants.length === b.constants.length &&
+    a.rules.length === b.rules.length;
+
+  if (!signatureMatches) {
+    notes.push('Signatures differ in arities, constant count, or rule count.');
+    // A differing signature does NOT settle the question. The concept may
+    // have defined its extra operation out of the others.
+    const interp = options.interpretation
+      ? findInterpretationWitness(a, b)
+      : null;
+    if (interp && interp.forward_verified && interp.backward_verified) {
+      notes.push(
+        'Signatures differ, but a two-way interpretation witness verified: every operation ' +
+          'of each system is definable as a term in the other, and every rule survives ' +
+          'translation. This is a re-skin, not a new structure.',
+      );
+      return {
+        equivalent: true,
+        stage: 'INTERPRETATION_WITNESS_VERIFIED',
+        templates,
+        fingerprints: emptyFingerprints,
+        witness: null,
+        interpretation_witness: interp,
+        notes,
+      };
+    }
+    if (interp) {
+      notes.push(
+        'An interpretation was found in one direction only. That is an embedding, not an ' +
+          'equivalence, and is not grounds for EXISTING_EQUIVALENT_FOUND.',
+      );
+    }
     return {
       equivalent: false,
       stage: 'SIGNATURE_MISMATCH',
       templates,
       fingerprints: emptyFingerprints,
       witness: null,
-      notes,
-    };
-  }
-  if (a.rules.length !== b.rules.length) {
-    notes.push('Different number of declared rules.');
-    return {
-      equivalent: false,
-      stage: 'SIGNATURE_MISMATCH',
-      templates,
-      fingerprints: emptyFingerprints,
-      witness: null,
+      interpretation_witness: interp,
       notes,
     };
   }
@@ -270,6 +304,7 @@ export function checkEquivalence(
       templates,
       fingerprints,
       witness: null,
+      interpretation_witness: null,
       notes,
     };
   }
@@ -280,12 +315,26 @@ export function checkEquivalence(
     notes.push(
       'Fingerprints agree but no two-way translation was constructed. Similarity is not equivalence.',
     );
+    const interp = options.interpretation ? findInterpretationWitness(a, b) : null;
+    if (interp && interp.forward_verified && interp.backward_verified) {
+      notes.push('No name bijection, but a two-way interpretation witness verified.');
+      return {
+        equivalent: true,
+        stage: 'INTERPRETATION_WITNESS_VERIFIED',
+        templates,
+        fingerprints,
+        witness: null,
+        interpretation_witness: interp,
+        notes,
+      };
+    }
     return {
       equivalent: false,
       stage: 'NO_WITNESS_FOUND',
       templates,
       fingerprints,
       witness: null,
+      interpretation_witness: interp,
       notes,
     };
   }
@@ -297,6 +346,7 @@ export function checkEquivalence(
     templates,
     fingerprints,
     witness,
+    interpretation_witness: null,
     notes,
   };
 }

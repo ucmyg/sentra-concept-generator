@@ -9,6 +9,8 @@ export * from './derived.ts';
 export * from './contradiction.ts';
 export * from './derive-search.ts';
 export * from './models.ts';
+export * from './interpretation.ts';
+export * from './baseline.ts';
 export * from './equivalence.ts';
 export * from './generator.ts';
 export * from './benchmark.ts';

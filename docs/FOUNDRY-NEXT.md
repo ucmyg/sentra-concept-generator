@@ -1,5 +1,9 @@
 # Concept Foundry — next implementation and research plan
 
+> STATUS 2026-08-16: Priority 1 (items 1-3) and Priority 2 item 6 are DONE and
+> pushed. See commits 7ee60ae, bae3f7c, and the interpretation-witness commit.
+> Remaining open items start at Priority 2 item 4.
+
 Written after the first generation run. Ordered by what most threatens the
 honesty of the output, not by what is most fun to build.
 
