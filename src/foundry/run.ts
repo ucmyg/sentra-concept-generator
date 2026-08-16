@@ -9,6 +9,7 @@ import { ConceptRegistry } from './registry.ts';
 import {
   measure,
   preregister,
+  type BenchmarkGoal,
   type BenchmarkSpec,
   type PreregisteredBenchmark,
 } from './benchmark.ts';
@@ -158,51 +159,143 @@ const CONCEPT_SEEDS: Record<string, ConceptSeed[]> = {
  * Pre-registered benchmarks. Written before any run.                  *
  * ------------------------------------------------------------------ */
 
+/**
+ * Fixed start/target pairs, declared here before any run. The metric is
+ * "steps to connect these two terms", not "length of whatever the search
+ * happened to find" — which is what made the first run's step metric
+ * circular.
+ */
+const BENCHMARK_GOALS: BenchmarkGoal[] = [
+  {
+    foundation_id: 'F1-distinction',
+    start: O('join', C('void'), O('mark', O('mark', C('unit')))),
+    target: C('unit'),
+    description: 'strip an inert void and undo a double mark',
+  },
+  {
+    foundation_id: 'F2-constraint',
+    start: O('meet', C('free'), O('relax', O('tighten', C('blocked')))),
+    target: C('blocked'),
+    description: 'strip a free meet and undo a tighten/relax pair',
+  },
+  {
+    foundation_id: 'F3-uncertainty',
+    start: O('overlay', C('sharp'), O('spread', C('diffuse'))),
+    target: C('diffuse'),
+    description: 'force a collapse through sharp, then collapse a spread',
+  },
+];
+
+const BASELINE_BOUND = { maxDepth: 3, maxTerms: 120 };
+
 export const BENCHMARK_SPECS: BenchmarkSpec[] = [
   {
     id: 'bench-reasoning-steps',
-    task: 'Mean kernel steps required by the recorded nontrivial derivations of a foundation.',
+    task: 'Steps required to connect a pre-registered start/target pair.',
     metric: 'reasoning_steps',
-    baseline_representation: 'conventional term rewriting over the same signature',
-    baseline_value: 4,
-    lower_is_better: true,
-    success_threshold: 3,
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'LOWER_IS_BETTER',
+    margin: 1,
+    held_out: false,
+    goals: BENCHMARK_GOALS,
   },
   {
     id: 'bench-memory',
-    task: 'Peak term size held during kernel replay of the recorded derivations.',
+    task: 'Peak term size held while connecting the pre-registered goal pair.',
     metric: 'memory',
-    baseline_representation: 'flat expression tree, no sharing',
-    baseline_value: 12,
-    lower_is_better: true,
-    success_threshold: 8,
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'LOWER_IS_BETTER',
+    margin: 1,
+    held_out: false,
+    goals: BENCHMARK_GOALS,
   },
   {
     id: 'bench-computation',
-    task: 'Rule-firing attempts required to reproduce the recorded derivations.',
+    task: 'Rule-firing attempts required to connect the pre-registered goal pair.',
     metric: 'computation',
-    baseline_representation: 'exhaustive rule scan per step',
-    baseline_value: 30,
-    lower_is_better: true,
-    success_threshold: 18,
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'LOWER_IS_BETTER',
+    margin: 1,
+    held_out: false,
+    goals: BENCHMARK_GOALS,
   },
   {
     id: 'bench-compositionality',
-    task: 'Declared rules acting on composite terms, per operation.',
+    task: 'Fraction of rules stated over variables rather than a single ground case.',
     metric: 'compositionality',
-    baseline_representation: 'signature with no composite-term rules',
-    baseline_value: 0.5,
-    lower_is_better: false,
-    success_threshold: 1,
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'HIGHER_IS_BETTER',
+    margin: 1,
+    held_out: false,
+    goals: BENCHMARK_GOALS,
   },
   {
     id: 'bench-expressiveness',
-    task: 'Distinct normal forms reachable among bounded ground terms.',
+    task: 'Distinct normal forms over the same bounded set of ground terms.',
     metric: 'expressiveness',
-    baseline_representation: 'ground terms with no rules (every term its own normal form)',
-    baseline_value: 8,
-    lower_is_better: false,
-    success_threshold: 4,
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'HIGHER_IS_BETTER',
+    margin: 1,
+    held_out: false,
+    goals: BENCHMARK_GOALS,
+  },
+];
+
+
+/**
+ * Held-out goals: deeper than the baseline's enumeration bound, and never
+ * seeded into it. The lookup table has no entry for these. If a foundation
+ * reaches them, it did so by generalizing, which is the only thing that
+ * distinguishes an abstraction from a memo.
+ */
+const HELD_OUT_GOALS: BenchmarkGoal[] = [
+  {
+    foundation_id: 'F1-distinction',
+    start: O('join', C('void'), O('join', O('mark', O('mark', C('unit'))), C('void'))),
+    target: C('unit'),
+    description: 'HELD OUT: nested inert voids around a double mark',
+  },
+  {
+    foundation_id: 'F2-constraint',
+    start: O('meet', C('free'), O('meet', C('free'), O('relax', O('tighten', C('blocked'))))),
+    target: C('blocked'),
+    description: 'HELD OUT: nested free meets around a tighten/relax pair',
+  },
+  {
+    foundation_id: 'F3-uncertainty',
+    start: O('overlay', C('sharp'), O('spread', O('overlay', C('sharp'), O('spread', C('diffuse'))))),
+    target: C('diffuse'),
+    description: 'HELD OUT: two nested sharp-forced collapses',
+  },
+];
+
+export const HELD_OUT_SPECS: BenchmarkSpec[] = [
+  {
+    id: 'bench-generalization-steps',
+    task: 'Steps to connect a HELD-OUT start/target pair the baseline table has no entry for.',
+    metric: 'reasoning_steps',
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'LOWER_IS_BETTER',
+    margin: 1,
+    held_out: true,
+    goals: HELD_OUT_GOALS,
+  },
+  {
+    id: 'bench-generalization-computation',
+    task: 'Rule-firing attempts on a HELD-OUT goal pair.',
+    metric: 'computation',
+    baseline_representation: 'GROUND_LOOKUP_TABLE',
+    baseline_bound: BASELINE_BOUND,
+    comparison: 'LOWER_IS_BETTER',
+    margin: 1,
+    held_out: true,
+    goals: HELD_OUT_GOALS,
   },
 ];
 
@@ -311,7 +404,9 @@ export async function runFirstGeneration(
   const openDefects: string[] = [];
 
   // Benchmarks are pre-registered BEFORE anything is measured.
-  const benchmarks = BENCHMARK_SPECS.map((spec) => preregister(spec, RUN_CLOCK));
+  const benchmarks = [...BENCHMARK_SPECS, ...HELD_OUT_SPECS].map((spec) =>
+    preregister(spec, RUN_CLOCK),
+  );
 
   for (const foundation of foundations) {
     const rootConsequence = consequenceFor(foundation, 'root');
@@ -380,10 +475,7 @@ export async function runFirstGeneration(
   // Measure only after pre-registration, and only against the registered hash.
   for (const benchmark of benchmarks) {
     for (const foundation of foundations) {
-      measure(benchmark, {
-        foundation,
-        consequences: consequences.filter((c) => c.foundation_id === foundation.id),
-      });
+      measure(benchmark, foundation);
     }
   }
 
@@ -415,25 +507,27 @@ export async function runFirstGeneration(
     'Finite-model search is bounded to small domains; "no model found" is a flag, not a refutation.',
   );
   openDefects.push(
-    'BENCHMARK BASELINES ARE STIPULATED, NOT MEASURED. baseline_value and success_threshold ' +
-      'in BENCHMARK_SPECS are numbers chosen at pre-registration time, not results from ' +
-      'running an actual conventional representation on the same task. The "advantage" ' +
-      'column therefore measures nothing about these foundations and must not be read as one. ' +
-      'Fix: implement a real baseline runner before any utility status is ever set.',
+    'Baselines are measured against a ground lookup table — the same behavior with every ' +
+      'abstraction removed. That is one conventional encoding, not the only one. A stronger ' +
+      'baseline (a hand-optimized conventional axiomatization) would be a harder test.',
   );
   openDefects.push(
-    'CIRCULAR METRIC: bench-reasoning-steps measures the step count of derivations that ' +
-      'searchDerivation was told to stop at (minSteps=2). It reports the search criterion ' +
-      'back to itself. Fix: pre-register a fixed target term per foundation and measure the ' +
-      'steps needed to reach it, rather than measuring whatever the search happened to find.',
+    'On the SEEDED benchmarks the flat lookup table beats every foundation on steps, memory ' +
+      'and computation. That is the correct result, not a bug: a memorized table wins any ' +
+      'task it has memorized. Read only the HELD-OUT rows as evidence of anything.',
+  );
+  openDefects.push(
+    'bench-compositionality is close to tautological — a ground lookup table has zero ' +
+      'variable-bearing rules by construction, so any foundation with one wins 1 to 0. It ' +
+      'measures the definition of the baseline, not a property of the foundation. Replace it ' +
+      'with a measure of how many distinct ground cases one variable-bearing rule covers.',
   );
   if (kills.length === 0) {
     openDefects.push(
-      'VACUOUS CONTRADICTION SEARCH: no concept died this run, but none of the three ' +
-        'foundations declares a `distinct` pair, so findContradiction had nothing it could ' +
-        'possibly report. Zero kills here is evidence of an untested search, not of ' +
-        'consistency. Fix: require every foundation to declare at least one distinctness ' +
-        'assertion, or the search is not a test.',
+      'No concept died this run. The contradiction search is no longer vacuous — every ' +
+        'foundation declares a distinctness assertion and tests/foundry/mutation.test.ts ' +
+        'injects a real contradiction into each one and requires the search to find it — ' +
+        'but zero kills still means these particular concepts were not hard enough to break.',
     );
   }
 
