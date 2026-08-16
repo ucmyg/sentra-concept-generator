@@ -1,8 +1,12 @@
 # Concept Foundry — next implementation and research plan
 
-> STATUS 2026-08-16: Priority 1 (items 1-3) and Priority 2 item 6 are DONE and
-> pushed. See commits 7ee60ae, bae3f7c, and the interpretation-witness commit.
-> Remaining open items start at Priority 2 item 4.
+> STATUS 2026-08-16: Priority 1 (items 1-3) and Priority 2 items 4 (termination
+> half only) and 6 are DONE and pushed. See commits 7ee60ae, bae3f7c, the
+> interpretation-witness commit, and `kernel.ts::terminationProbe`.
+> Confluence (the other half of item 4, critical-pair analysis) is
+> deliberately NOT attempted yet — it needs first-order unification, which
+> is a correctness-sensitive addition to a trusted-kernel file and should not
+> be rushed. Remaining open items: confluence probes, then item 5.
 
 Written after the first generation run. Ordered by what most threatens the
 honesty of the output, not by what is most fun to build.
@@ -40,6 +44,21 @@ they are fixed. Nothing should be promoted past UNTESTED before they are.
    NON_CONFLUENT / NON_TERMINATING_WITHIN_BOUND as first-class findings. A
    non-confluent system where two normal forms are declared distinct is exactly
    the contradiction case, so this feeds Priority 1.3.
+
+   DONE (termination half): `terminationProbe` in `kernel.ts` attempts
+   leftmost-outermost normalization of a given start term under a hard
+   step/size budget and reports `TERMINATED` / `NON_TERMINATING_WITHIN_BOUND`
+   / `SIZE_EXCEEDED`. It is a probe on one reduction order for one start
+   term, not a decidability proof, and says so in its own doc comment.
+   Tests: `tests/foundry/termination.test.ts`.
+
+   STILL OPEN (confluence half): needs first-order unification between two
+   rule LHSes (not the one-directional `match` the kernel already has) to
+   find critical pairs, then joinability of each pair via `terminationProbe`
+   on both branches. Left unbuilt rather than shipped half-verified — a
+   unification bug in a trusted-kernel file produces false NON_CONFLUENT or
+   false confluence claims, either of which is worse than the gap being
+   visibly open.
 
 5. **Conditional and non-oriented axioms.** Rules are currently oriented rewrites
    only. Equational axioms that cannot be oriented (commutativity) are

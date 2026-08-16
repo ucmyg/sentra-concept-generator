@@ -166,6 +166,98 @@ export function replayTrace(foundation: Foundation, trace: Trace | null | undefi
   return { ok: true, final: current, reason: null, steps_replayed: replayed, max_term_size: maxSize };
 }
 
+/* ------------------------------------------------------------------ *
+ * Termination probe.                                                  *
+ *                                                                     *
+ * The kernel replays traces someone else built; it never claims a     *
+ * rule set terminates in general (that is undecidable). What it can   *
+ * do honestly is attempt leftmost-outermost normalization of a given  *
+ * start term under a hard step and size budget, and report which of   *
+ * three things actually happened. A bound exhaustion is reported as   *
+ * exactly that — never silently treated as a normal form.             *
+ * ------------------------------------------------------------------ */
+
+export type TerminationStatus =
+  | 'TERMINATED'
+  | 'NON_TERMINATING_WITHIN_BOUND'
+  | 'SIZE_EXCEEDED';
+
+export interface TerminationProbeResult {
+  status: TerminationStatus;
+  final: Term | null;
+  steps_taken: number;
+  max_term_size: number;
+}
+
+/** First position (leftmost-outermost, pre-order) where some rule fires. */
+function firstRedex(
+  rules: Rule[],
+  term: Term,
+): { rule: Rule; path: number[] } | null {
+  for (const path of positions(term)) {
+    const target = subtermAt(term, path);
+    if (target === null) continue;
+    for (const rule of rules) {
+      if (match(rule.lhs, target) !== null) return { rule, path };
+    }
+  }
+  return null;
+}
+
+/**
+ * Attempt to normalize `start` under `foundation`'s rules, leftmost-outermost,
+ * up to `maxSteps` rewrites or `maxSize` term size — whichever is hit first.
+ *
+ * This is a probe, not a proof. TERMINATED means a normal form was reached
+ * within budget; it says nothing about other reduction orders. It exists so
+ * a foundation that visibly blows up (the common failure mode of a badly
+ * oriented axiom) is caught and reported, instead of silently trusted.
+ */
+export function terminationProbe(
+  foundation: Foundation,
+  start: Term,
+  opts: { maxSteps?: number; maxSize?: number } = {},
+): TerminationProbeResult {
+  const maxSteps = opts.maxSteps ?? 500;
+  const maxSize = opts.maxSize ?? 2000;
+  let current = start;
+  let maxSizeSeen = termSize(current);
+  for (let step = 0; step < maxSteps; step += 1) {
+    const redex = firstRedex(foundation.rules, current);
+    if (redex === null) {
+      return {
+        status: 'TERMINATED',
+        final: current,
+        steps_taken: step,
+        max_term_size: maxSizeSeen,
+      };
+    }
+    const produced = applyRuleAt(redex.rule, current, redex.path);
+    if (produced === null) {
+      // The reported redex must fire; a null here means firstRedex and
+      // applyRuleAt disagree, which is a kernel bug, not a foundation defect.
+      throw new Error('terminationProbe: redex reported by firstRedex did not fire');
+    }
+    current = produced;
+    const size = termSize(current);
+    maxSizeSeen = Math.max(maxSizeSeen, size);
+    if (size > maxSize) {
+      return {
+        status: 'SIZE_EXCEEDED',
+        final: null,
+        steps_taken: step + 1,
+        max_term_size: maxSizeSeen,
+      };
+    }
+  }
+  return {
+    status: 'NON_TERMINATING_WITHIN_BOUND',
+    final: null,
+    steps_taken: maxSteps,
+    max_term_size: maxSizeSeen,
+  };
+}
+
 /** Build a trace by actually running the rules — the only sanctioned way to make one. */
 export function derive(
   foundation: Foundation,
