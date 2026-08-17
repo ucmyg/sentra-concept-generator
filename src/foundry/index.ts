@@ -11,6 +11,7 @@ export * from './contradiction.ts';
 export * from './derive-search.ts';
 export * from './models.ts';
 export * from './interpretation.ts';
+export * from './witness-gate.ts';
 export * from './baseline.ts';
 export * from './confluence.ts';
 export * from './equivalence.ts';

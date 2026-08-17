@@ -42,6 +42,22 @@ export interface ScreenResult {
   outcome: ScreenOutcome;
   detail: string;
   foundation: Foundation | null;
+  /**
+   * Present exactly when outcome is EQUIVALENT_TO_KNOWN. Equivalence is a
+   * terminal verdict, so it may not be reported as a bare label — the
+   * interpretation that justifies it, and the gate ruling that admitted that
+   * interpretation, travel with it as first-class machine-readable evidence.
+   *
+   * A kill whose evidence is absent is not a kill that can be audited later,
+   * and an unauditable terminal verdict is one nobody can ever reverse.
+   */
+  equivalence_evidence?: {
+    target_id: string;
+    stage: string;
+    interpretation_witness: unknown;
+    witness_gate: unknown;
+    notes: string[];
+  };
 }
 
 function collectVars(t: Term, into: Set<string>): void {
@@ -207,6 +223,13 @@ export function screenCandidate(
         outcome: 'EQUIVALENT_TO_KNOWN',
         detail: `equivalent to ${other.id}`,
         foundation: f,
+        equivalence_evidence: {
+          target_id: other.id,
+          stage: eq.stage,
+          interpretation_witness: eq.interpretation_witness ?? eq.witness ?? null,
+          witness_gate: eq.witness_gate ?? null,
+          notes: eq.notes,
+        },
       };
     }
   }

@@ -156,17 +156,31 @@ test('constraining an existing operation is where the gate actually bites', () =
   );
 });
 
-test('a screening run kills the overwhelming majority of what it proposes', () => {
+/* ------------------------------------------------------------------ *
+ * REPLACED: 'a screening run kills the overwhelming majority of what   *
+ * it proposes'.                                                        *
+ *                                                                      *
+ * That test asserted a kill-rate floor as its proof the screener was    *
+ * working. A kill rate is precisely the number a BROKEN killer          *
+ * inflates, so the assertion passed *because* the equivalence channel   *
+ * was executing candidates on degenerate witnesses, and it went red     *
+ * the moment the killer became honest. It was measuring the defect and  *
+ * calling it health.                                                    *
+ *                                                                      *
+ * The rule that replaces it, and that governs this suite from here on:  *
+ *                                                                      *
+ *   OUTCOME RATES ARE OBSERVATIONS TO REPORT, NEVER ASSERTIONS THAT     *
+ *   PROVE CORRECTNESS. A mechanism is proven by a constructed scenario  *
+ *   in which it MUST fire, paired with one in which it MUST NOT.        *
+ *                                                                      *
+ * The tally is still checked for internal consistency below — that is   *
+ * a bookkeeping invariant, not a rate.                                  *
+ * ------------------------------------------------------------------ */
+
+test('every screened candidate is accounted for in the tally', () => {
   const report = runScreen([DISTINCTION_ALGEBRA], { seed: 'test-screen', sampleSize: 30 });
   assert.ok(report.candidates_enumerated > 100, 'the candidate space must be genuinely searched');
   assert.ok(report.candidates_screened > 0);
-
-  const died = report.candidates_screened - report.tally.SURVIVED;
-  assert.ok(
-    died > report.tally.SURVIVED,
-    `most candidates must die (${died} died, ${report.tally.SURVIVED} survived). ` +
-      'A generator whose proposals all pass is not being checked.',
-  );
   assert.equal(
     Object.values(report.tally).reduce((a, b) => a + b, 0),
     report.candidates_screened,
@@ -175,6 +189,51 @@ test('a screening run kills the overwhelming majority of what it proposes', () =
   for (const [outcome, n] of Object.entries(report.tally)) {
     assert.ok(Number.isInteger(n), `tally for ${outcome} is not a number — an outcome went unbucketed`);
   }
+});
+
+test('the equivalence channel MUST fire on a planted re-skin', () => {
+  // Build a candidate that clears every earlier gate on its own merits, then
+  // plant that exact structure in the known set and screen it again. It is now
+  // a re-skin of something already known, and the equivalence channel is the
+  // only thing standing between it and a SURVIVED verdict it does not deserve.
+  const rule: Rule = { id: 'def', lhs: O('gen_u', V('x')), rhs: O('mark', V('x')) };
+  const first = screenCandidate(DISTINCTION_ALGEBRA, rule, GEN_U, [], 0);
+  assert.equal(
+    first.outcome,
+    'SURVIVED',
+    `fixture is not exercising the equivalence channel — it died earlier as ${first.outcome}`,
+  );
+
+  const reskin = { ...first.foundation!, id: 'planted-reskin' };
+  const result = screenCandidate(DISTINCTION_ALGEBRA, rule, GEN_U, [reskin], 0);
+  assert.equal(
+    result.outcome,
+    'EQUIVALENT_TO_KNOWN',
+    'a candidate identical to a known structure was not caught by the equivalence channel',
+  );
+  // Part 2: a terminal verdict must carry its evidence.
+  assert.ok(result.equivalence_evidence, 'an equivalence kill was issued with no evidence attached');
+  assert.equal(result.equivalence_evidence!.target_id, 'planted-reskin');
+  assert.ok(
+    result.equivalence_evidence!.notes.length > 0,
+    'the equivalence evidence must record how the verdict was reached',
+  );
+});
+
+test('the equivalence channel MUST NOT fire on two genuinely distinct systems', () => {
+  const [f1, f2] = seedFoundations();
+  const result = screenCandidate(
+    f1!,
+    { id: 'fresh', lhs: O('gen_u', C('void')), rhs: C('void') },
+    GEN_U,
+    [f2!],
+    0,
+  );
+  assert.notEqual(
+    result.outcome,
+    'EQUIVALENT_TO_KNOWN',
+    'two genuinely distinct systems were declared equivalent — the erasure path is live again',
+  );
 });
 
 test('no survivor is equivalent to any seed foundation or to another survivor', () => {
