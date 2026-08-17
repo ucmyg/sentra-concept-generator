@@ -18,6 +18,7 @@
     "smoke": "node src/cli.ts generate --provider fixture --input tests/fixtures/request.json --response-file tests/fixtures/model-response.json",
     "check": "npm test && npm run doctor",
     "foundry": "node src/foundry/cli.ts foundry-out",
-    "test:foundry": "node --test tests/foundry/acceptance.test.ts"
+    "test:foundry": "node --test tests/foundry/acceptance.test.ts",
+    "screen": "node src/foundry/screen-cli.ts foundry-out"
   }
 }

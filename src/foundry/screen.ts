@@ -12,6 +12,7 @@ import {
   seededSample,
   type EnumerationBound,
 } from './enumerate.ts';
+import { ScreenLedger } from './screen-ledger.ts';
 import type { Foundation, OpSpec, Rule, Term } from './types.ts';
 
 /* ------------------------------------------------------------------ *
@@ -258,6 +259,11 @@ export interface ScreenRunReport {
   results: ScreenResult[];
   survivors: ScreenResult[];
   tally: Record<ScreenOutcome, number>;
+  /**
+   * Every verdict this run issued, hash-chained and append-only. The tally
+   * above is a summary; this is the record. Summaries cannot be audited.
+   */
+  ledger: ScreenLedger;
 }
 
 export function runScreen(
@@ -269,6 +275,7 @@ export function runScreen(
   const bounds = options.bounds ?? DEFAULT_SCREEN_BOUNDS;
   const operations = options.operations ?? CANDIDATE_OPERATIONS;
 
+  const ledger = new ScreenLedger();
   const results: ScreenResult[] = [];
   const survivors: ScreenResult[] = [];
   let enumerated = 0;
@@ -292,6 +299,10 @@ export function runScreen(
         ];
         const result = screenCandidate(parent, batch[i]!.rule, op, known, i, bounds);
         results.push(result);
+        // Written down at the moment it is issued. A verdict that lives only
+        // in this array dies when the process does, and an unauditable
+        // terminal verdict can never be reversed.
+        ledger.record(seed, result);
         if (result.outcome === 'SURVIVED') survivors.push(result);
       }
     }
@@ -317,5 +328,6 @@ export function runScreen(
     results,
     survivors,
     tally,
+    ledger,
   };
 }
