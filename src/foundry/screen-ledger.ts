@@ -26,6 +26,12 @@ import type { ScreenOutcome, ScreenResult } from './screen.ts';
 export type LedgerEntryKind =
   /** The original verdict as issued by a screening run. */
   | 'VERDICT'
+  /** Opens a run. Carries the provenance that lets a later reader decide, by
+   *  comparison rather than trust, what this run could possibly have covered. */
+  | 'RUN_HEADER'
+  /** A fact about the record itself — an incident, a loss, a closing tally.
+   *  Bound to no candidate. The chain records its own history too. */
+  | 'OBSERVATION'
   /** A re-examination that upholds an earlier verdict, citing honest evidence. */
   | 'CONFIRMED'
   /** A re-examination that overturns it. The concept returns to the pipeline. */
@@ -39,9 +45,27 @@ export interface ScreenLedgerEntry {
   seq: number;
   kind: LedgerEntryKind;
   run_seed: string;
+  /** Empty for RUN_HEADER / OBSERVATION — those are bound to no candidate. */
   candidate_id: string;
+  /**
+   * Content-derived identity: sha256 over the parent, the introduced operation
+   * and the candidate rule.
+   *
+   * candidate_id is POSITIONAL — "<parent>-gen-<op>-<index>" — and the index is
+   * the position within that run's batch. Under sampling the batch is a seeded
+   * shuffle, so the same candidate_id names a DIFFERENT rule in every run. An
+   * audit that compared two runs by candidate_id would report a pile of
+   * reversals that are pure aliasing, and that is exactly what happened when
+   * the audit run was first compared against the exhaustive one: 22 of 36
+   * verdicts appeared to have flipped and not one of them had.
+   *
+   * Empty for RUN_HEADER / OBSERVATION.
+   */
+  candidate_hash: string;
   parent_id: string;
-  outcome: ScreenOutcome;
+  /** Null for RUN_HEADER / OBSERVATION. Readers filtering on kind==='VERDICT'
+   *  are unaffected; nothing that was a verdict became nullable. */
+  outcome: ScreenOutcome | null;
   detail: string;
   /** Present for terminal verdicts. Absent evidence is itself recorded. */
   evidence: unknown;
@@ -60,8 +84,39 @@ function computeEntryHash(entry: Omit<ScreenLedgerEntry, 'entry_hash'>): string 
   return sha256(`${stableStringify({ ...entry, entry_hash: null })}\n${entry.prev_hash}`);
 }
 
+/**
+ * The identity a cross-run audit must key on. Derived from what the candidate
+ * IS — its parent, the operation it introduces, and its rule — never from
+ * where it happened to sit in some run's batch.
+ */
+export function candidateHash(result: ScreenResult): string {
+  return sha256(
+    stableStringify({
+      parent_id: result.parent_id,
+      operation: { name: result.new_operation.name, arity: result.new_operation.arity },
+      rule: result.rule,
+    }),
+  );
+}
+
+/** Called with each entry the instant it is appended, before control returns. */
+export type LedgerSink = (entry: ScreenLedgerEntry) => void;
+
 export class ScreenLedger {
   readonly #entries: ScreenLedgerEntry[] = [];
+  readonly #sink: LedgerSink | null;
+
+  /**
+   * A sink makes the ledger crash-safe. Without one, every verdict of a
+   * multi-hour run lives in this array until the process chooses to write it
+   * out — and a session that dies at hour three leaves nothing, which is the
+   * exact failure this ledger was built to end. With one, each entry is
+   * durable at the moment it is decided and a killed process leaves a valid
+   * partial chain that a resume can append to.
+   */
+  constructor(sink?: LedgerSink) {
+    this.#sink = sink ?? null;
+  }
 
   get length(): number {
     return this.#entries.length;
@@ -79,7 +134,52 @@ export class ScreenLedger {
     const entry: ScreenLedgerEntry = { ...skeleton, entry_hash: computeEntryHash(skeleton) };
     Object.freeze(entry);
     this.#entries.push(entry);
+    // Durable before the caller continues. If the sink throws, the run stops:
+    // continuing to screen while verdicts are silently not landing is the
+    // in-memory-history bug wearing a disguise.
+    this.#sink?.(entry);
     return entry;
+  }
+
+  /**
+   * Open a run. `provenance` is free-form and is what a future reader compares
+   * against another run's header to decide whether this run's coverage was a
+   * superset — exhaustive flag, enumeration bounds, operation set, sample size.
+   * Narration in a chat log proves nothing; this is in the chain.
+   */
+  openRun(runSeed: string, provenance: unknown, cause: string): ScreenLedgerEntry {
+    return this.#append({
+      kind: 'RUN_HEADER',
+      run_seed: runSeed,
+      candidate_id: '',
+      candidate_hash: '',
+      parent_id: '',
+      outcome: null,
+      detail: 'run header',
+      evidence: provenance,
+      supersedes: null,
+      cause,
+    });
+  }
+
+  /**
+   * Record a fact about the record itself: an incident, a destroyed artifact,
+   * a closing tally. A ledger that only ever documents other people's failures
+   * is decoration — this is how it documents its own.
+   */
+  observe(runSeed: string, detail: string, payload: unknown, cause: string): ScreenLedgerEntry {
+    return this.#append({
+      kind: 'OBSERVATION',
+      run_seed: runSeed,
+      candidate_id: '',
+      candidate_hash: '',
+      parent_id: '',
+      outcome: null,
+      detail,
+      evidence: payload,
+      supersedes: null,
+      cause,
+    });
   }
 
   /** Record a verdict exactly as the screener issued it. */
@@ -88,6 +188,7 @@ export class ScreenLedger {
       kind: 'VERDICT',
       run_seed: runSeed,
       candidate_id: result.candidate_id,
+      candidate_hash: candidateHash(result),
       parent_id: result.parent_id,
       outcome: result.outcome,
       detail: result.detail,
@@ -115,6 +216,7 @@ export class ScreenLedger {
       kind,
       run_seed: original.run_seed,
       candidate_id: original.candidate_id,
+      candidate_hash: original.candidate_hash,
       parent_id: original.parent_id,
       outcome: original.outcome,
       detail: original.detail,
@@ -155,8 +257,11 @@ export class ScreenLedger {
    * process — WITHOUT recomputing their hashes. Nothing here is believed. Call
    * `verify()` on the result; that is the whole point of loading this way.
    */
-  static fromEntries(entries: readonly ScreenLedgerEntry[]): ScreenLedger {
-    const ledger = new ScreenLedger();
+  static fromEntries(entries: readonly ScreenLedgerEntry[], sink?: LedgerSink): ScreenLedger {
+    const ledger = new ScreenLedger(sink);
+    // Pushed directly, NOT through #append: loading must not re-hash and must
+    // not re-emit to the sink. A resume appends after these; it never rewrites
+    // them, so a killed run's partial chain is extended, not restarted.
     for (const e of entries) ledger.#entries.push(Object.freeze({ ...e }));
     return ledger;
   }

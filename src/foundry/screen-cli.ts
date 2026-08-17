@@ -1,9 +1,8 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-
 import { stableStringify } from '../canonical-json.ts';
 
 import { seedFoundations } from './generator.ts';
+import { DEFAULT_LEDGER_ROOT, openRunDir } from './run-store.ts';
+import { ScreenLedger } from './screen-ledger.ts';
 import { runScreen } from './screen.ts';
 
 /* ------------------------------------------------------------------ *
@@ -15,10 +14,15 @@ import { runScreen } from './screen.ts';
  * every historical equivalence kill came back empty while the killer  *
  * had been firing all along.                                          *
  *                                                                     *
- * Usage: node src/foundry/screen-cli.ts [outDir] [seed] [sampleSize]  *
+ * Every invocation writes into its own stamped run directory. There is  *
+ * no shared mutable filename for anything verdict-bearing, because a    *
+ * fixed path meant each run destroyed the last one's record — and that  *
+ * happened twice before it was made impossible.                         *
+ *                                                                       *
+ * Usage: node src/foundry/screen-cli.ts [ledgerRoot] [seed] [sampleSize] *
  * ------------------------------------------------------------------ */
 
-const outDir = resolve(process.argv[2] ?? 'foundry-out');
+const ledgerRoot = process.argv[2] ?? DEFAULT_LEDGER_ROOT;
 const seed = process.argv[3] ?? 'default-run';
 const sampleArg = process.argv[4];
 const sampleSize = sampleArg === undefined ? undefined : Number(sampleArg);
@@ -28,12 +32,16 @@ if (sampleSize !== undefined && !Number.isFinite(sampleSize)) {
   process.exit(1);
 }
 
-mkdirSync(outDir, { recursive: true });
+const run = openRunDir(ledgerRoot, seed);
 
-const report = runScreen(seedFoundations(), { seed, sampleSize });
-
-// The ledger first. If anything below throws, the verdicts are already safe.
-writeFileSync(resolve(outDir, 'screen-ledger.jsonl'), report.ledger.toJSONL(), 'utf8');
+// The sink writes each verdict at the moment it is issued, so a killed process
+// leaves a valid partial chain rather than nothing. "Ledger first" was right;
+// "and durable before the next candidate is screened" is its missing half.
+const report = runScreen(seedFoundations(), {
+  seed,
+  sampleSize,
+  ledger: new ScreenLedger(run.sink),
+});
 
 const chain = report.ledger.verify();
 if (!chain.ok) {
@@ -42,15 +50,13 @@ if (!chain.ok) {
   process.exit(2);
 }
 
-writeFileSync(
-  resolve(outDir, 'survivors.json'),
-  stableStringify(report.survivors.map((s) => s.foundation)),
-  'utf8',
-);
+run.writeArtifact('survivors.json', stableStringify(report.survivors.map((s) => s.foundation)));
 
 const kills = report.ledger.terminalVerdicts();
 const unevidenced = kills.filter((k) => k.evidence === null);
 
+console.log(`run: ${run.runId}`);
+console.log(`dir: ${run.dir}`);
 console.log(`seed: ${seed}`);
 console.log(`enumerated: ${report.candidates_enumerated}  screened: ${report.candidates_screened}`);
 console.log(`ledger: ${report.ledger.length} entries, chain verified`);

@@ -104,3 +104,68 @@ reversed, so an error in it is permanent by construction.
 empty — not because the killer never fired, but because `screen.ts` persisted
 nothing. Every kill it ever issued evaporated at process exit. The audit was
 unrunnable, which is strictly worse than an audit that finds damage.*
+
+## L5 — Luck is not a control
+
+A hazard that procedure caught is a hazard that is still live. The only
+question a near-miss answers is whether someone happened to be looking.
+
+### House precedent: the fixed-path overwrite, 2026-08-16
+
+The screening entrypoint wrote every run's verdicts to one filename. Two
+occurrences, both recorded in the incidents chain as
+`INC-2026-08-16-fixed-path-overwrite`:
+
+| # | Time | What was destroyed | Caught by | Recovered |
+|---|------|--------------------|-----------|-----------|
+| 1 | ~20:26 | the throwaway run behind `survivors.json` — 60 screened of 233 | noticed afterwards, during an unrelated audit | no; seed and survivor identities are gone |
+| 2 | 22:23 | the exhaustive re-screen's ledger, 767 of 767 | noticed afterwards, during the fix for occurrence 1 | yes, only because a hand-made copy happened to exist |
+
+Occurrence 2 fired forty minutes after L4 was written down, by the same
+author, in the same session, while that author was actively fixing
+occurrence 1. Vigilance was at its maximum and the hazard fired anyway.
+
+**The precedent.** Both catches were luck. The first depended on someone
+running an audit that had no reason to look there. The second depended on a
+copy made by hand for an unrelated purpose. Neither was a control. Had either
+piece of luck been absent, the loss would have been silent and permanent, and
+the record would have shown a clean run.
+
+Therefore: when a hazard is found, the remedy is a mechanism that makes the
+hazard impossible, not a rule telling the next person to be careful. A rule
+that must be remembered has already failed once by existing.
+
+Remedy for this precedent: run-scoped output directories, `mkdirSync` with
+`recursive: false`, no shared mutable filename for anything verdict-bearing.
+Pinned by `tests/foundry/run-store.test.ts` — *a second run cannot alter the
+first run byte-for-byte*. That test fails against the code as it stood at
+22:23.
+
+### Corollary — a check that skips itself when its evidence is missing is not a check
+
+Discovered closing this same audit. The cross-run comparison verified its
+replay against the identities in the reference ledger, and skipped that
+verification when the reference carried none. It then compared replay-derived
+identities on both sides, agreed with itself 36 out of 36, and reported a
+closed audit having proven nothing.
+
+Missing evidence is a STOP, never a pass. Same shape as L3: a gate that can be
+satisfied vacuously is not a gate, and a check that can be satisfied by the
+absence of its own evidence is the vacuous case wearing a lab coat.
+
+## L6 — Identity is what a thing is, never where it sat
+
+`candidate_id` is positional: `<parent>-gen-<op>-<index>`. Under sampling the
+batch is a seeded shuffle, so index *N* names a different rule in every run.
+
+The first cross-run audit keyed on that id and reported 22 of 36 verdicts
+reversed. Every one was an alias. Nothing had flipped.
+
+Any identity a claim is keyed on must be derived from the content of the thing
+claimed about — here `candidate_hash`, sha256 over the parent, the introduced
+operation, and the rule. Positional ids remain useful for reading a single
+run's log and are never valid across runs.
+
+Pinned by `tests/foundry/candidate-identity.test.ts`, which asserts that
+`candidate_id` demonstrably *does* alias across two sampled runs, so the day it
+stops aliasing is the day someone has to come read this law before deleting it.

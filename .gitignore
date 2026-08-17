@@ -10,3 +10,8 @@ coverage/
 .DS_Store
 Thumbs.db
 foundry-out/
+
+# foundry-out/ is scratch and is ignored above. foundry-ledger/ deliberately is NOT:
+# the screening ledger is the durable record of every verdict ever issued, and a
+# hash chain that no commit and no backup ever sees is one rm from gone.
+!foundry-ledger/
