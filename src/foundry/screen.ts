@@ -1,5 +1,5 @@
 import { criticalPairs } from './confluence.ts';
-import { findContradiction } from './contradiction.ts';
+import { criticalSeeds, findContradiction } from './contradiction.ts';
 import { searchDerivation } from './derive-search.ts';
 import { isNontrivial } from './derived.ts';
 import { checkEquivalence } from './equivalence.ts';
@@ -70,13 +70,14 @@ export function isInformationPreserving(rule: Rule): boolean {
 
 export interface ScreenBounds {
   contradiction: { maxDepth: number; maxTerms: number };
-  termination: { maxSteps: number; maxTerms: number };
+  /** maxTerms bounds how many ground start terms are probed, not the search. */
+  termination: { maxSteps: number; maxTerms: number; maxSize: number };
   equivalenceModelSize: number;
 }
 
 export const DEFAULT_SCREEN_BOUNDS: ScreenBounds = {
   contradiction: { maxDepth: 4, maxTerms: 120 },
-  termination: { maxSteps: 60, maxTerms: 60 },
+  termination: { maxSteps: 60, maxTerms: 60, maxSize: 400 },
   equivalenceModelSize: 2,
 };
 
@@ -139,9 +140,26 @@ export function screenCandidate(
 
   // Cheapest first: a non-terminating rule set makes every later question
   // undecidable within our bounds, so there is nothing to be gained by asking.
-  const term = terminationProbe(f, bounds.termination);
-  if (term.status === 'NON_TERMINATING') {
-    return { ...base, outcome: 'NON_TERMINATING', detail: term.note ?? '', foundation: f };
+  //
+  // The probe needs start terms. Ground instances of the rules' left sides are
+  // exactly where rules can fire and collide, so they are where divergence
+  // shows up first. Probing with no start term at all — which is what this
+  // gate did before — reports TERMINATED for every candidate ever screened.
+  for (const seed of criticalSeeds(f).slice(0, bounds.termination.maxTerms)) {
+    const term = terminationProbe(f, seed, {
+      maxSteps: bounds.termination.maxSteps,
+      maxSize: bounds.termination.maxSize,
+    });
+    if (term.status !== 'TERMINATED') {
+      return {
+        ...base,
+        outcome: 'NON_TERMINATING',
+        detail:
+          `${term.status} from a ground instance after ${term.steps_taken} step(s), ` +
+          `largest term seen ${term.max_term_size}`,
+        foundation: f,
+      };
+    }
   }
 
   const contra = findContradiction(f, bounds.contradiction);

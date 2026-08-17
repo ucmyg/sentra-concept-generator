@@ -16,5 +16,8 @@ export * from './confluence.ts';
 export * from './equivalence.ts';
 export * from './generator.ts';
 export * from './benchmark.ts';
+export * from './levels.ts';
+export * from './screen.ts';
+export * from './enumerate.ts';
 export * from './explain.ts';
 export * from './run.ts';

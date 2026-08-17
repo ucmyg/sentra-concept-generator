@@ -75,6 +75,32 @@ export interface PreregisteredBenchmark extends BenchmarkSpec {
   results: BenchmarkResult[];
 }
 
+/**
+ * Recompute the lock from the spec it claims to cover.
+ *
+ * The hash is not a label. A spec edited after the numbers came in — a margin
+ * loosened, a goal swapped, a metric changed — no longer hashes to the value
+ * it carries, and that is the only thing standing between a pre-registration
+ * and a post-hoc story. `measure` refuses to run without this check passing.
+ */
+export function verifyPreregistration(benchmark: PreregisteredBenchmark): void {
+  if (!benchmark.prereg_hash) {
+    throw new Error(
+      `PREREGISTRATION_HASH_MISSING:${benchmark.id} — a benchmark may not run without a ` +
+        'lock written and hashed before the run.',
+    );
+  }
+  const { prereg_hash: _claimed, results: _results, preregistered_at, ...spec } = benchmark;
+  const recomputed = sha256(stableStringify({ ...spec, preregistered_at }));
+  if (recomputed !== benchmark.prereg_hash) {
+    throw new Error(
+      `PREREGISTRATION_HASH_MISMATCH:${benchmark.id} — the spec does not hash to the lock ` +
+        `it carries (expected ${recomputed}, carried ${benchmark.prereg_hash}). A spec that ` +
+        'changed after pre-registration is not pre-registered.',
+    );
+  }
+}
+
 export function preregister(spec: BenchmarkSpec, at: string): PreregisteredBenchmark {
   if (!(spec.margin > 0)) {
     throw new Error(
@@ -94,6 +120,7 @@ export function measure(
   benchmark: PreregisteredBenchmark,
   foundation: Foundation,
 ): BenchmarkResult {
+  verifyPreregistration(benchmark);
   const goalSeed = benchmark.held_out
     ? []
     : benchmark.goals
