@@ -250,6 +250,13 @@ export interface ScreenRunOptions {
   enumeration?: EnumerationBound;
   bounds?: ScreenBounds;
   operations?: readonly OpSpec[];
+  /**
+   * Supply a ledger to make this run crash-safe — one built with a sink writes
+   * each verdict to disk as it is decided. Omit and the run keeps its record in
+   * memory, which is exactly the condition that made the equivalence audit come
+   * back empty.
+   */
+  ledger?: ScreenLedger;
 }
 
 export interface ScreenRunReport {
@@ -275,7 +282,25 @@ export function runScreen(
   const bounds = options.bounds ?? DEFAULT_SCREEN_BOUNDS;
   const operations = options.operations ?? CANDIDATE_OPERATIONS;
 
-  const ledger = new ScreenLedger();
+  const ledger = options.ledger ?? new ScreenLedger();
+
+  // The header lands BEFORE the first verdict, so even a run killed one second
+  // in leaves a chain that states what it was attempting. Superset must be
+  // provable by comparing these fields against another run's header — not by
+  // believing a sentence someone wrote about it afterwards.
+  ledger.openRun(
+    seed,
+    {
+      exhaustive: options.sampleSize === undefined,
+      sample_size: options.sampleSize ?? null,
+      enumeration,
+      bounds,
+      operations: operations.map((o) => o.name),
+      parents: parents.map((p) => p.id),
+    },
+    'run opened',
+  );
+
   const results: ScreenResult[] = [];
   const survivors: ScreenResult[] = [];
   let enumerated = 0;
@@ -327,6 +352,15 @@ export function runScreen(
     SURVIVED: 0,
   } as Record<ScreenOutcome, number>;
   for (const r of results) tally[r.outcome] += 1;
+
+  // Closes the run in the chain. A header with no close means the process died
+  // mid-run, and that is readable from the file alone without anyone saying so.
+  ledger.observe(
+    seed,
+    'run closed',
+    { candidates_enumerated: enumerated, candidates_screened: results.length, tally },
+    'run completed normally',
+  );
 
   return {
     seed,

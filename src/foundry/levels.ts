@@ -112,6 +112,108 @@ const CORPUS_LADDER: ReadonlyArray<{ minEffectiveFamilies: number; ceiling: Leve
   { minEffectiveFamilies: 0, ceiling: 1 },
 ];
 
+/* ------------------------------------------------------------------ *
+ * THE STRENGTH BAR                                                    *
+ *                                                                     *
+ * The ceiling is supposed to measure scrutiny. But it is computed     *
+ * from family COUNTS, and a count cannot tell a hard attack from a    *
+ * lazy one — so one tasting per family raises the cap exactly as much *
+ * as one real assault. That turns the ceiling into a number a weak    *
+ * mechanism inflates, which is the kill-rate-floor disease one level  *
+ * up: RATE_ASSERTION caught tests that pass without proving what they *
+ * name; this catches coverage that counts without attacking what it   *
+ * names.                                                              *
+ *                                                                     *
+ * So a family reaches the ceiling only if BOTH hold:                  *
+ *   (a) its target passed the standing triple — a formal definition,  *
+ *       a planted re-skin that demonstrably DIES to it, and a         *
+ *       genuinely distinct system that demonstrably SURVIVES it;      *
+ *   (b) the embedding search ran at declared full strength, with its  *
+ *       parameters recorded.                                          *
+ *                                                                     *
+ * An attempt below the bar is not discarded. It is ATTEMPTED_NOT_     *
+ * COVERED: real evidence, on the chain, moving the ceiling by zero.   *
+ * ------------------------------------------------------------------ */
+
+export interface FamilyAttempt {
+  family: string;
+  /** What this attempt would claim if it clears the bar. */
+  claims: 'FULL' | 'PARTIAL';
+  /** The standing triple. Every leg must be demonstrated, not asserted. */
+  target_triple: {
+    has_formal_definition: boolean;
+    planted_reskin_died: boolean;
+    distinct_system_survived: boolean;
+  };
+  search: {
+    /** True only when the search ran at the declared full strength. */
+    declared_full_strength: boolean;
+    /** Recorded in the run header like every other provenance field. */
+    parameters: unknown;
+  };
+}
+
+export type AttemptRejection =
+  | 'NO_FORMAL_DEFINITION'
+  | 'PLANTED_RESKIN_SURVIVED'
+  | 'DISTINCT_SYSTEM_DIED'
+  | 'SEARCH_BELOW_FULL_STRENGTH'
+  | 'SEARCH_PARAMETERS_NOT_RECORDED';
+
+export interface AttemptRuling {
+  family: string;
+  admitted: boolean;
+  /** Empty exactly when admitted. */
+  reasons: readonly AttemptRejection[];
+}
+
+/** Why an attempt does or does not reach the ceiling. Never partial credit. */
+export function ruleOnAttempt(attempt: FamilyAttempt): AttemptRuling {
+  const reasons: AttemptRejection[] = [];
+  if (!attempt.target_triple.has_formal_definition) reasons.push('NO_FORMAL_DEFINITION');
+  if (!attempt.target_triple.planted_reskin_died) reasons.push('PLANTED_RESKIN_SURVIVED');
+  if (!attempt.target_triple.distinct_system_survived) reasons.push('DISTINCT_SYSTEM_DIED');
+  if (!attempt.search.declared_full_strength) reasons.push('SEARCH_BELOW_FULL_STRENGTH');
+  if (attempt.search.parameters === null || attempt.search.parameters === undefined) {
+    reasons.push('SEARCH_PARAMETERS_NOT_RECORDED');
+  }
+  return { family: attempt.family, admitted: reasons.length === 0, reasons };
+}
+
+export interface AdmittedCoverage {
+  coverage: CorpusCoverage;
+  rulings: readonly AttemptRuling[];
+  /** Named, because evidence that moved the ceiling zero is still evidence. */
+  attempted_not_covered: readonly AttemptRuling[];
+}
+
+/**
+ * Build the coverage the ceiling is computed from, admitting only attempts that
+ * clear the bar. Families that fail are reported, never silently dropped —
+ * a coverage table that hides its failed attacks is a coverage table that lies
+ * about how hard anyone tried.
+ */
+export function admitCoverage(
+  attempts: readonly FamilyAttempt[],
+  notExpressible: readonly string[] = [],
+): AdmittedCoverage {
+  const rulings = attempts.map(ruleOnAttempt);
+  const admittedFamilies = new Set(rulings.filter((r) => r.admitted).map((r) => r.family));
+  const admitted = attempts.filter((a) => admittedFamilies.has(a.family));
+  return {
+    coverage: {
+      families_fully_covered: admitted.filter((a) => a.claims === 'FULL').map((a) => a.family),
+      families_partially_covered: admitted
+        .filter((a) => a.claims === 'PARTIAL')
+        .map((a) => a.family),
+      families_not_expressible: notExpressible,
+      targets_checked: admitted.length,
+    },
+    rulings,
+    attempted_not_covered: rulings.filter((r) => !r.admitted),
+  };
+}
+
 export interface CorpusCeiling {
   ceiling: Level;
   effective_families: number;

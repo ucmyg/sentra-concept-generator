@@ -126,10 +126,23 @@ test('a real screening run leaves a verifying ledger of every verdict it issued'
 
   const report = runScreen([DISTINCTION_ALGEBRA], { seed: 'ledger-run', sampleSize: 4 });
 
+  const verdicts = report.ledger.all().filter((e) => e.kind === 'VERDICT');
   assert.equal(
-    report.ledger.length,
+    verdicts.length,
     report.candidates_screened,
     'the run screened more candidates than it wrote down',
+  );
+
+  // The run must be bracketed: a header stating what it attempted before the
+  // first verdict, and a close after the last. A header with no close is how a
+  // reader detects a process that died mid-run, from the file alone.
+  const all = report.ledger.all();
+  assert.equal(all[0]!.kind, 'RUN_HEADER');
+  assert.equal(all.at(-1)!.detail, 'run closed');
+  assert.equal(
+    (all[0]!.evidence as { exhaustive: boolean }).exhaustive,
+    false,
+    'a sampled run must not be recorded as exhaustive',
   );
   const check = report.ledger.verify();
   assert.equal(check.ok, true, `the run's own ledger does not verify: ${JSON.stringify(check.broken)}`);
