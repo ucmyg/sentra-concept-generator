@@ -8,6 +8,13 @@ import type { EquivalenceVerdict, Foundation } from './types.ts';
  * no reachable transition at all — see status.ts.                     *
  * ------------------------------------------------------------------ */
 
+export type SearchRecordFailure = 'UNSEALED' | 'CORPUS_MISMATCH' | 'STALE';
+
+export interface SearchRecordCheck {
+  ok: boolean;
+  reason: SearchRecordFailure | null;
+}
+
 export interface PriorArtCorpus {
   corpus_id: string;
   description: string;
@@ -15,12 +22,22 @@ export interface PriorArtCorpus {
   content_sha256: string;
   /** Search the corpus for a structure equivalent to the given foundation. */
   search(foundation: Foundation): Promise<EquivalenceVerdict[]>;
+  /**
+   * Required. A corpus that cannot vouch for its own search records cannot
+   * back a novelty claim, so this is not optional — see attachPriorArtCorpus.
+   */
+  verifySearchRecord(record: unknown): SearchRecordCheck;
 }
 
 let attached: PriorArtCorpus | null = null;
 
 export function attachPriorArtCorpus(corpus: PriorArtCorpus): void {
-  if (!corpus || typeof corpus.search !== 'function' || !corpus.content_sha256) {
+  if (
+    !corpus ||
+    typeof corpus.search !== 'function' ||
+    typeof corpus.verifySearchRecord !== 'function' ||
+    !corpus.content_sha256
+  ) {
     throw new Error('PRIOR_ART_CORPUS_REJECTED: INCOMPLETE_DESCRIPTOR');
   }
   attached = corpus;

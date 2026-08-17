@@ -4,6 +4,7 @@ export * from './classes.ts';
 export * from './genesis.ts';
 export * from './registry.ts';
 export * from './prior-art.ts';
+export * from './corpus.ts';
 export * from './status.ts';
 export * from './derived.ts';
 export * from './contradiction.ts';
