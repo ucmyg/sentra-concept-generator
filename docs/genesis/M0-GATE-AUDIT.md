@@ -177,8 +177,12 @@ believed either.
    Until sets, relations, functions, graphs, automata, and programs are targets,
    `NO_EMBEDDING_FOUND` is not evidence and level 3+ is not available in
    practice. Highest priority: it gates the entire honesty rule.
-2. **Screening deaths must reach the ledger.** We are discarding 98% of our
-   failure evidence at process exit. Charter §8: never delete a failure.
+2. ~~**Screening deaths must reach the ledger.**~~ **CLOSED, post-M0.**
+   `screen-ledger.ts` now records every verdict `runScreen` issues, kills
+   included, hash-chained and append-only; `screen-cli.ts` writes it to
+   `screen-ledger.jsonl` before anything else, verifies the chain, and refuses
+   to report over a broken one or a kill with no evidence attached. Nothing
+   is discarded at process exit anymore. See commit `94ebd34`.
 3. **Assumption-removal operator.** §12 Step 3 has no implementation.
 4. **Block B (Origin) on every record**; `StatementLabel` threaded through.
 5. **Translation Engine with an explicit loss record.**
