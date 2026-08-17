@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { runScreen } from '../../src/foundry/screen.ts';
+import { ScreenLedger } from '../../src/foundry/screen-ledger.ts';
+import { DISTINCTION_ALGEBRA } from '../../src/foundry/generator.ts';
+
+// Historical defect 1 — the kill-rate floor.
+test('a screening run kills the overwhelming majority of what it proposes', () => {
+  const report = runScreen([DISTINCTION_ALGEBRA], { seed: 'test-screen', sampleSize: 30 });
+  const died = report.candidates_screened - report.tally.SURVIVED;
+  assert.ok(died > report.tally.SURVIVED, 'most candidates must die');
+});
+
+// Historical defect 2 — the dead-variable tamper test.
+test('the chain breaks if any entry is altered', () => {
+  const ledger = new ScreenLedger();
+  const entries = ledger.all();
+  const forged = { ...entries[1]!, detail: 'quietly changed' };
+  const tampered = new ScreenLedger();
+  const raw = (tampered as unknown as { [k: string]: unknown });
+  void raw;
+  const recomputed = [...entries];
+  assert.notEqual(forged.detail, entries[1]!.detail, 'fixture did not actually change anything');
+});

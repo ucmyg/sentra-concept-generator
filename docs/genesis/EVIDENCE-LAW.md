@@ -37,6 +37,37 @@ it is not a proof.
 
 ---
 
+## L1b — A test that guards a mechanism must be shown to fail
+
+**The RED half is part of the test's evidence, not a courtesy.** Any test whose
+name claims it guards something — a gate, a chain, a killer, a refusal — must
+demonstrate it CAN fail, and that demonstration must be recorded where the test
+lives: a commit hash where it was red, a stashed-fix reproduction, or a fixture
+the sweep runs against.
+
+A guard test that has never been observed failing is indistinguishable from a
+guard test that cannot fail. Both are green.
+
+*Two occurrences in one night, which is what turned this from an anecdote into
+a rule:*
+
+1. `'a screening run kills the overwhelming majority of what it proposes'`
+   asserted a kill-rate floor and passed for as long as the equivalence channel
+   was executing candidates on degenerate witnesses.
+2. `'the chain breaks if any entry is altered'` asserted that a fixture the test
+   had itself just mutated differed from the original. It never called
+   `verify()`. It named the tamper detector and exercised nothing.
+
+The mechanical symptoms are swept by `tools/proves-nothing-sweep.mjs`:
+`RATE_ASSERTION`, `DEAD_LOCAL`, `VOIDED_VALUE`, `ASSERTS_OWN_FIXTURE`,
+`NO_MECHANISM_INVOKED`. The sweep is itself held to this rule — it runs against
+a fixture reconstructing both historical defects, and must flag both. A
+detector that has never been seen to fire proves nothing either.
+
+The sweep catches symptoms, not the class. It is a floor, not a ceiling.
+
+---
+
 ## L2 — A terminal verdict carries its evidence or it does not exist
 
 Verdicts that delete a concept — `EXISTING_EQUIVALENT_FOUND`,

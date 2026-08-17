@@ -59,6 +59,87 @@ export interface LevelEvidence {
   benchmark: BenchmarkOutcome;
 }
 
+/* ------------------------------------------------------------------ *
+ * The corpus-derived ceiling.                                         *
+ *                                                                     *
+ * NO_EMBEDDING_FOUND is only ever as strong as the corpus it survived.*
+ * A candidate that escapes a corpus of four near-identical algebras   *
+ * has demonstrated that it is not those four algebras. That is not a  *
+ * conceptual reorganization; "not being a monoid" is not a discovery. *
+ *                                                                     *
+ * So the strength of a survived reduction attack is COMPUTED from how *
+ * much distinct structural ground was actually attacked into, and the *
+ * cap lifts by itself as targets land. It is never asserted, and no   *
+ * caller can raise it by claiming harder.                             *
+ * ------------------------------------------------------------------ */
+
+export interface CorpusCoverage {
+  /** Families with at least one target the kernel can actually execute. */
+  families_fully_covered: readonly string[];
+  /** Families with a target that covers part of the family, per its rationale. */
+  families_partially_covered: readonly string[];
+  /**
+   * Families declared inexpressible in an oriented equational theory. These
+   * are NOT held against the corpus — refusing to fake a target is honest —
+   * but they are named, because a claim of broad survival should show what
+   * was never in the room.
+   */
+  families_not_expressible: readonly string[];
+  /** Total reduction targets actually checked against. */
+  targets_checked: number;
+}
+
+/**
+ * A partially covered family counts for half. It caught something real, and it
+ * left something real unattacked; neither pretending otherwise is honest.
+ */
+const PARTIAL_FAMILY_WEIGHT = 0.5;
+
+/**
+ * Effective families -> the highest level a survived attack can support.
+ *
+ * The bottom rung is deliberately 1.5 rather than 2: at half weight that is
+ * one full family plus one partial, the thinnest corpus that has attacked
+ * more than a single kind of structure. Without that rung, a corpus of one
+ * family and a corpus of NOTHING land identically, and "we attacked a little"
+ * would be indistinguishable from "we never looked" — which is the exact
+ * collapse this whole module exists to prevent.
+ */
+const CORPUS_LADDER: ReadonlyArray<{ minEffectiveFamilies: number; ceiling: Level }> = [
+  { minEffectiveFamilies: 6, ceiling: 5 },
+  { minEffectiveFamilies: 4, ceiling: 3 },
+  { minEffectiveFamilies: 1.5, ceiling: 2 },
+  { minEffectiveFamilies: 0, ceiling: 1 },
+];
+
+export interface CorpusCeiling {
+  ceiling: Level;
+  effective_families: number;
+  derivation: string;
+}
+
+export function corpusCeiling(coverage: CorpusCoverage): CorpusCeiling {
+  const full = coverage.families_fully_covered.length;
+  const partial = coverage.families_partially_covered.length;
+  const effective = full + partial * PARTIAL_FAMILY_WEIGHT;
+  const rung = CORPUS_LADDER.find((r) => effective >= r.minEffectiveFamilies) ?? {
+    ceiling: 1 as Level,
+  };
+  return {
+    ceiling: rung.ceiling,
+    effective_families: effective,
+    derivation:
+      `CORPUS_COVERAGE: ${coverage.targets_checked} target(s) across ` +
+      `${full} fully covered famil(ies) [${coverage.families_fully_covered.join(', ') || 'none'}] and ` +
+      `${partial} partially covered [${coverage.families_partially_covered.join(', ') || 'none'}], ` +
+      `weighting partial at ${PARTIAL_FAMILY_WEIGHT} => ${effective} effective famil(ies), ` +
+      `which supports level ${rung.ceiling} at most. ` +
+      `Not expressible in the target language, and therefore never attacked: ` +
+      `[${coverage.families_not_expressible.join(', ') || 'none'}]. ` +
+      'This ceiling rises on its own as targets land. It cannot be raised by claiming.',
+  };
+}
+
 export interface LevelVerdict {
   level: Level;
   /** True when the claim exceeded what the evidence supports. */
@@ -146,8 +227,29 @@ function ceilingFor(evidence: LevelEvidence): { ceiling: Level; reason: string }
  * a level, it never compels one, and quietly promoting a modest claim is the
  * same labeling violation as quietly defending an inflated one.
  */
-export function levelCeiling(claimed: Level, evidence: LevelEvidence): LevelVerdict {
-  const { ceiling, reason } = ceilingFor(evidence);
+export function levelCeiling(
+  claimed: Level,
+  evidence: LevelEvidence,
+  coverage?: CorpusCoverage,
+): LevelVerdict {
+  let { ceiling, reason } = ceilingFor(evidence);
+
+  // A survived reduction attack is worth exactly as much as the corpus it was
+  // survived against. Every other reduction outcome already stands on its own
+  // evidence — a lossless embedding is a fact about a target that WAS found,
+  // and no amount of corpus changes it. Only NO_EMBEDDING_FOUND is a claim
+  // about absence, and absence is only as strong as the search behind it.
+  if (evidence.reduction === 'NO_EMBEDDING_FOUND' && coverage) {
+    const corpus = corpusCeiling(coverage);
+    if (corpus.ceiling < ceiling) {
+      ceiling = corpus.ceiling;
+      reason =
+        `CORPUS_CEILING_BINDS: the evidence would otherwise support a higher level, but ` +
+        `NO_EMBEDDING_FOUND is a claim about absence and this corpus cannot support it that far. ` +
+        corpus.derivation;
+    }
+  }
+
   if (claimed <= ceiling) {
     return { level: claimed, capped: false, claimed, ceiling, reason };
   }
