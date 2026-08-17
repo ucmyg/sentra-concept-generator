@@ -85,3 +85,34 @@ ancestor changes that ancestor's hash, which changes every descendant's.
 `tests/foundry/*.test.ts`. The regression test asserting the untouched evidence
 gate still rejects an unsourced external claim is written first and must pass
 before and after every change in this build.
+
+## Identification loophole (found while wiring the enumerator/screener)
+
+`findContradiction` proves contradictions by rewrite reachability: two divergent
+paths from one shared start term landing on two constants declared `distinct`.
+That is real and sound, but it is not the only way a candidate can defeat a
+distinctness assertion, and the enumerator immediately produced the other way.
+
+A ground rule like `gen_u(void) -> unit`, where `gen_u` is a brand-new operation
+introduced with exactly this one rule and nothing else, is **not** a rewrite
+contradiction — no proof exists that `void = unit`, because nothing else in the
+foundation constrains `gen_u`. A model where `gen_u` maps `void` to `unit` and
+nowhere else touches `void` or `unit` is perfectly consistent. `screenCandidate`
+was correctly not flagging it as `CONTRADICTORY`, and the test asserting it
+should have been flagged that way was asserting something false.
+
+But it should still die, on different grounds: a single-rule operation is
+unconstrained everywhere else it isn't pinned down, which means it is exactly
+the shape of an identification loophole. Nothing stops a later proposal from
+building `gen_u`'s inverse and using the pair to route between two primitives we
+declared apart — the distinctness assertion becomes decorative. The right
+verdict is a new outcome, `IDENTIFICATION_LOOPHOLE` (not `CONTRADICTORY`,
+because it isn't one): a fresh operation, constrained by exactly one ground
+rule, whose lhs bottoms out at one member of a declared-distinct pair and whose
+rhs is the other member, is rejected on structural sight — no search required,
+same as `DEGENERATE_CONSTANT` needs no search.
+
+Not yet implemented. `tests/foundry/screen.test.ts` (the "generated rule that
+contradicts a declared distinctness" case) currently fails and should be
+rewritten to expect `IDENTIFICATION_LOOPHOLE`, not `CONTRADICTORY`, once the
+check lands in `screenCandidate`.
