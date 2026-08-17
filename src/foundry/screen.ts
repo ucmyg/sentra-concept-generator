@@ -2,7 +2,7 @@ import { criticalPairs } from './confluence.ts';
 import { criticalSeeds, findContradiction } from './contradiction.ts';
 import { searchDerivation } from './derive-search.ts';
 import { isNontrivial } from './derived.ts';
-import { checkEquivalence } from './equivalence.ts';
+import { checkEquivalence, KNOWN_TEMPLATES } from './equivalence.ts';
 import { proposeConcept } from './generator.ts';
 import { isVar, terminationProbe } from './kernel.ts';
 import {
@@ -290,9 +290,16 @@ export function runScreen(
           : seededSample(all, options.sampleSize, `${seed}:${parent.id}:${op.name}`);
 
       for (let i = 0; i < batch.length; i += 1) {
-        // Survivors join the known set immediately, so a later candidate that
-        // merely re-skins an earlier one is caught inside a single run.
+        // The reduction corpus comes FIRST and is always present. Without it
+        // a candidate was only ever checked against its own siblings, so
+        // "distinct from 3 known structure(s)" was the whole of a survival
+        // claim and the 15 declared reduction targets were never consulted.
+        // A survival earned without facing the corpus is not a survival.
+        //
+        // Survivors join immediately after, so a later candidate that merely
+        // re-skins an earlier one is caught inside a single run.
         const known = [
+          ...KNOWN_TEMPLATES,
           ...parents.filter((p) => p.id !== parent.id),
           parent,
           ...survivors.map((s) => s.foundation!),
